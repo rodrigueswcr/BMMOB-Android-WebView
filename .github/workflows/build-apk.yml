@@ -22,7 +22,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ✅ Usar o sdkmanager direto (sem a action que bugou)
+      # Aceita licenças e instala os pacotes do Android SDK usando o sdkmanager direto
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
 
@@ -43,7 +43,7 @@ jobs:
           echo "$HOME/gradle/gradle-8.7/bin" >> $GITHUB_PATH
           gradle -v
 
-      # Gerar o projeto Android (WebView) no runner
+      # Gera o projeto Android (WebView wrapper)
       - name: Generate Android project (WebView wrapper)
         shell: bash
         run: |
@@ -111,7 +111,6 @@ jobs:
               implementation("androidx.appcompat:appcompat:1.7.0")
               implementation("com.google.android.material:material:1.12.0")
               implementation("androidx.activity:activity-ktx:1.9.2")
-              implementation("androidx.constraintlayout:constraintlayout:2.2.0")
               implementation("androidx.webkit:webkit:1.11.0")
           }
           EOF
@@ -266,26 +265,26 @@ jobs:
                           callback?.invoke(origin, true, false)
                       }
 
+                      // ✅ Correção: só lança o chooser se o Intent não for nulo
                       override fun onShowFileChooser(
-    webView: WebView?,
-    filePathCallback: ValueCallback<Array<Uri>>?,
-    fileChooserParams: FileChooserParams?
-): Boolean {
-    this@MainActivity.filePathCallback = filePathCallback
-    return try {
-        fileChooserParams?.createIntent()?.let { intent ->
-            fileChooserLauncher.launch(intent)   // só chama com Intent não-nulo
-            true
-        } ?:run {
-            this@MainActivity.filePathCallback = null
-            false
-        }
-    } catch (e:Exception) {
-        this@MainActivity.filePathCallback = null
-        false
-    }
-}
-
+                          webView: WebView?,
+                          filePathCallback: ValueCallback<Array<Uri>>?,
+                          fileChooserParams: FileChooserParams?
+                      ): Boolean {
+                          this@MainActivity.filePathCallback = filePathCallback
+                          return try {
+                              fileChooserParams?.createIntent()?.let { intent ->
+                                  fileChooserLauncher.launch(intent)
+                                  true
+                              } ?: run {
+                                  this@MainActivity.filePathCallback = null
+                                  false
+                              }
+                          } catch (e: Exception) {
+                              this@MainActivity.filePathCallback = null
+                              false
+                          }
+                      }
                   }
 
                   webView.loadUrl(getString(R.string.web_url))
