@@ -30,7 +30,17 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
 
-      # Cria o projeto Android (WebView) na hora
+      # Instala o Gradle 8.7 manualmente e coloca no PATH
+      - name: Install Gradle 8.7
+        run: |
+          set -e
+          VER=8.7
+          curl -sL https://services.gradle.org/distributions/gradle-${VER}-bin.zip -o gradle.zip
+          unzip -q gradle.zip -d $HOME/gradle
+          echo "$HOME/gradle/gradle-${VER}/bin" >> $GITHUB_PATH
+          gradle -v
+
+      # Gera o projeto Android (WebView) no runner
       - name: Generate Android project (WebView wrapper)
         shell: bash
         run: |
@@ -307,18 +317,16 @@ jobs:
           }
           EOF
 
-      # Instala o Gradle 8.7 e coloca no PATH
-      - name: Setup Gradle 8.7
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.7
+      - name: Generate Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version 8.7
+          chmod +x gradlew
 
-      - name: Check Gradle
-        run: gradle -v
-
-      # Compila sem depender de wrapper
       - name: Build Debug APK
-        run: gradle --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: List APKs
+        run: ls -R app/build/outputs/apk || true
 
       - name: Upload APK (artifact)
         uses: actions/upload-artifact@v4
