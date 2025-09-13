@@ -267,18 +267,25 @@ jobs:
                       }
 
                       override fun onShowFileChooser(
-                          webView: WebView?, filePathCallback: ValueCallback<Array<Uri>>?, fileChooserParams: FileChooserParams?
-                      ): Boolean {
-                          this@MainActivity.filePathCallback = filePathCallback
-                          return try {
-                              val intent = fileChooserParams?.createIntent()
-                              fileChooserLauncher.launch(intent)
-                              true
-                          } catch (_: Exception) {
-                              this@MainActivity.filePathCallback = null
-                              false
-                          }
-                      }
+    webView: WebView?,
+    filePathCallback: ValueCallback<Array<Uri>>?,
+    fileChooserParams: FileChooserParams?
+): Boolean {
+    this@MainActivity.filePathCallback = filePathCallback
+    return try {
+        fileChooserParams?.createIntent()?.let { intent ->
+            fileChooserLauncher.launch(intent)   // só chama com Intent não-nulo
+            true
+        } ?:run {
+            this@MainActivity.filePathCallback = null
+            false
+        }
+    } catch (e: Exception) {
+        this@MainActivity.filePathCallback = null
+        false
+    }
+}
+
                   }
 
                   webView.loadUrl(getString(R.string.web_url))
