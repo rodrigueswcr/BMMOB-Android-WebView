@@ -22,7 +22,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Aceita licenças e instala os pacotes do Android SDK usando o sdkmanager direto
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
 
@@ -35,7 +34,6 @@ jobs:
             "build-tools;34.0.0"
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      # Gradle 8.7
       - name: Install Gradle 8.7
         run: |
           curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o gradle.zip
@@ -43,7 +41,6 @@ jobs:
           echo "$HOME/gradle/gradle-8.7/bin" >> $GITHUB_PATH
           gradle -v
 
-      # Gera o projeto Android (WebView wrapper)
       - name: Generate Android project (WebView wrapper)
         shell: bash
         run: |
@@ -91,7 +88,7 @@ jobs:
                   targetSdk = 34
                   versionCode = 1
                   versionName = "1.0"
-                  resValue("string", "app_name", "BMMOB")
+                  resValue("string", "app_name", "BMMOB Treinamento")
               }
               buildTypes {
                   release {
@@ -130,7 +127,8 @@ jobs:
               <application
                   android:allowBackup="true"
                   android:label="@string/app_name"
-                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
                   android:supportsRtl="true"
                   android:theme="@style/Theme.Material3.DayNight.NoActionBar">
                   <activity
@@ -151,7 +149,7 @@ jobs:
           cat > app/src/main/res/values/strings.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
-              <string name="app_name">BMMOB</string>
+              <string name="app_name">BMMOB Treinamento</string>
               <string name="web_url">https://rodrigueswcr.github.io/BMMOB-Treinamento/</string>
               <string name="permission_location_rationale">
                   O app precisa de acesso à localização para habilitar recursos de geolocalização no site.
@@ -265,7 +263,6 @@ jobs:
                           callback?.invoke(origin, true, false)
                       }
 
-                      // ✅ Correção: só lança o chooser se o Intent não for nulo
                       override fun onShowFileChooser(
                           webView: WebView?,
                           filePathCallback: ValueCallback<Array<Uri>>?,
@@ -300,6 +297,26 @@ jobs:
           }
           EOF
 
+      # === ÍCONE DO APP ======================================================
+      - name: Add app icon from repo file
+        run: |
+          set -e
+          test -f app_icon.png || { echo "ERRO: Faça upload do ícone como app_icon.png na raiz do repositório."; exit 1; }
+          mkdir -p app/src/main/res/drawable app/src/main/res/mipmap-anydpi-v26 app/src/main/res/values
+          cp app_icon.png app/src/main/res/drawable/ic_launcher_foreground.png
+          cat > app/src/main/res/values/ic_launcher_background.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources><color name="ic_launcher_background">#FFFFFFFF</color></resources>
+          EOF
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>
+          EOF
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+
       - name: Generate Gradle wrapper
         run: |
           gradle wrapper --gradle-version 8.7
@@ -308,8 +325,11 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
+      - name: Rename APK
+        run: mv app/build/outputs/apk/debug/app-debug.apk "BMMOB-Treinamento-debug.apk"
+
       - name: Upload APK (artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: BMMOB-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: BMMOB-Treinamento-debug-apk
+          path: BMMOB-Treinamento-debug.apk
