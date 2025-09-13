@@ -30,7 +30,11 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
 
-      # Instala o Gradle 8.7 manualmente e coloca no PATH
+      # 🔧 Cria o local.properties para o Gradle achar o SDK
+      - name: Create local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      # Instala Gradle 8.7 e coloca no PATH
       - name: Install Gradle 8.7
         run: |
           set -e
@@ -308,28 +312,4 @@ jobs:
               }
 
               override fun onBackPressed() {
-                  if (this::webView.isInitialized && webView.canGoBack()) {
-                      webView.goBack()
-                  } else {
-                      super.onBackPressed()
-                  }
-              }
-          }
-          EOF
-
-      - name: Generate Gradle wrapper
-        run: |
-          gradle wrapper --gradle-version 8.7
-          chmod +x gradlew
-
-      - name: Build Debug APK
-        run: ./gradlew --no-daemon assembleDebug
-
-      - name: List APKs
-        run: ls -R app/build/outputs/apk || true
-
-      - name: Upload APK (artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: BMMOB-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+                  if (this::webView.i
