@@ -280,7 +280,7 @@ jobs:
             this@MainActivity.filePathCallback = null
             false
         }
-    } catch (e: Exception) {
+    } catch (e:Exception) {
         this@MainActivity.filePathCallback = null
         false
     }
