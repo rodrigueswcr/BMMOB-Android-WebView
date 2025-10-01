@@ -22,32 +22,20 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Aceita licenças do SDK sem falhar por "Broken pipe"
-      - name: Accept Android SDK licenses (no broken pipe)
-        shell: bash
-        run: |
-          set -e
-          SDKMGR="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          set +e
-          yes | "$SDKMGR" --licenses >/dev/null 2>&1
-          code=$?
-          set -e
-          if [ "$code" -ne 0 ] && [ "$code" -ne 141 ]; then
-            echo "sdkmanager --licenses falhou com exit code $code"
-            exit "$code"
-          fi
+      # ✅ Instala o SDK + aceita licenças + baixa os pacotes necessários
+      # (evita completamente o problema do "Broken pipe")
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 16.0
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
 
-      # Instala pacotes do SDK (cada item em um argumento separado)
-      - name: Install Android SDK packages
+      - name: Confirm sdk.dir for Gradle
         shell: bash
-        run: |
-          set -e
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
-          # Faz o Gradle encontrar o SDK (evita "SDK location not found")
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Install Gradle 8.7
         shell: bash
