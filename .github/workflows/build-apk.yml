@@ -22,10 +22,20 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Aceita licenças do SDK
-      - name: Accept Android SDK licenses
+      # Aceita licenças do SDK sem falhar por "Broken pipe"
+      - name: Accept Android SDK licenses (no broken pipe)
         shell: bash
-        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+        run: |
+          set -e
+          SDKMGR="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          set +e
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && [ "$code" -ne 141 ]; then
+            echo "sdkmanager --licenses falhou com exit code $code"
+            exit "$code"
+          fi
 
       # Instala pacotes do SDK (cada item em um argumento separado)
       - name: Install Android SDK packages
@@ -36,6 +46,7 @@ jobs:
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0"
+          # Faz o Gradle encontrar o SDK (evita "SDK location not found")
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Install Gradle 8.7
@@ -269,7 +280,7 @@ jobs:
                           callback?.invoke(origin, true, false)
                       }
 
-                      // Trata Intent nula no file chooser
+                      // Trata Intent nula no file chooser (evita erro de tipo)
                       override fun onShowFileChooser(
                           webView: WebView?,
                           filePathCallback: ValueCallback<Array<Uri>>?,
@@ -304,7 +315,7 @@ jobs:
           }
           EOF
 
-      # Ícone adaptativo (sem here-doc): só roda se app_icon.png existir
+      # Ícone adaptativo (opcional): só roda se app_icon.png existir
       - name: Add app icon if provided
         shell: bash
         run: |
