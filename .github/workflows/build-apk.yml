@@ -22,30 +22,31 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Evita travar no aceite de licenças
+      # Aceita licenças do SDK
       - name: Accept Android SDK licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+        shell: bash
+        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
 
-      # Instala pacotes do SDK - cada pacote em um argumento (resolve o erro de antes)
+      # Instala pacotes do SDK (cada item em um argumento separado)
       - name: Install Android SDK packages
+        shell: bash
         run: |
           set -e
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install \
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0"
-          # Faz o Gradle encontrar o SDK (evita "SDK location not found")
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      # Gradle 8.7
       - name: Install Gradle 8.7
+        shell: bash
         run: |
           curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o gradle.zip
-          unzip -q gradle.zip -d $HOME/gradle
-          echo "$HOME/gradle/gradle-8.7/bin" >> $GITHUB_PATH
+          unzip -q gradle.zip -d "$HOME/gradle"
+          echo "$HOME/gradle/gradle-8.7/bin" >> "$GITHUB_PATH"
           gradle -v
 
-      # Gera o projeto Android completo (Kotlin) - WebView para a URL do site
+      # Gera o projeto Android (WebView)
       - name: Generate Android project (WebView wrapper)
         shell: bash
         run: |
@@ -268,7 +269,7 @@ jobs:
                           callback?.invoke(origin, true, false)
                       }
 
-                      // ✅ Correção: Intent nula tratada (evita o erro que tivemos)
+                      // Trata Intent nula no file chooser
                       override fun onShowFileChooser(
                           webView: WebView?,
                           filePathCallback: ValueCallback<Array<Uri>>?,
@@ -303,39 +304,41 @@ jobs:
           }
           EOF
 
-      # Ícone adaptativo — agora OPCIONAL (não falha se não existir)
+      # Ícone adaptativo (sem here-doc): só roda se app_icon.png existir
       - name: Add app icon if provided
+        shell: bash
         run: |
           set -e
           if [ -f app_icon.png ]; then
             echo "Usando app_icon.png como ícone"
             mkdir -p app/src/main/res/drawable app/src/main/res/mipmap-anydpi-v26 app/src/main/res/values
             cp app_icon.png app/src/main/res/drawable/ic_launcher_foreground.png
-            cat > app/src/main/res/values/ic_launcher_background.xml <<'XML'
-            <?xml version="1.0" encoding="utf-8"?>
-            <resources><color name="ic_launcher_background">#FFFFFFFF</color></resources>
-            XML
-            cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'XML'
-            <?xml version="1.0" encoding="utf-8"?>
-            <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-                <background android:drawable="@color/ic_launcher_background"/>
-                <foreground android:drawable="@drawable/ic_launcher_foreground"/>
-            </adaptive-icon>
-            XML
+            printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' \
+              '<resources><color name="ic_launcher_background">#FFFFFFFF</color></resources>' \
+              > app/src/main/res/values/ic_launcher_background.xml
+            printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' \
+              '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">' \
+              '    <background android:drawable="@color/ic_launcher_background"/>' \
+              '    <foreground android:drawable="@drawable/ic_launcher_foreground"/>' \
+              '</adaptive-icon>' \
+              > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
             cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
           else
             echo "Sem app_icon.png — usando ícone padrão do Android"
           fi
 
       - name: Generate Gradle wrapper
+        shell: bash
         run: |
           gradle wrapper --gradle-version 8.7
           chmod +x gradlew
 
       - name: Build Debug APK
+        shell: bash
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
       - name: Rename APK
+        shell: bash
         run: mv app/build/outputs/apk/debug/app-debug.apk "BMMOB-Treinamento-debug.apk"
 
       - name: Upload APK (artifact)
