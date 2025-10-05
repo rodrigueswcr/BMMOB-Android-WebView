@@ -8,51 +8,86 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
-      - name: Checkout
+      # 1) Sempre primeiro: checkout
+      - name: Check out
         uses: actions/checkout@v4
 
+      # 2) JDK 17 + cache do Gradle
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
+      # 3) Android SDK via action + pacotes em linhas separadas
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # 12.0 (11076708) já existe no runner
-          cmdline-tools-version: 11076708
-          # ❗ Sem aspas e sem vírgulas — uma linha por pacote
           packages: |
             platform-tools
             platforms;android-34
             build-tools;34.0.0
 
-      # (Opcional, robustez extra) Garante a instalação dos pacotes
-      - name: Ensure Android packages installed (fallback)
+      # 3.1) Fallback robusto: aceita licenças, força instalação com retry e valida
+      - name: Ensure Android packages (retry)
         shell: bash
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list_installed || true
+          set -euo pipefail
+          SDKM="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 
+          echo ">> Accepting licenses (idempotente)"
+          yes | "$SDKM" --licenses >/dev/null
+
+          echo ">> Forçando instalação com retry"
+          pkgs=(
+            "platform-tools"
+            "platforms;android-34"
+            "build-tools;34.0.0"
+          )
+
+          for pkg in "${pkgs[@]}"; do
+            for attempt in 1 2 3; do
+              echo ">> [$pkg] tentativa $attempt"
+              if yes | "$SDKM" --install "$pkg" --verbose; then
+                break
+              fi
+              if [[ $attempt -eq 3 ]]; then
+                echo "::error::Falha ao instalar $pkg após 3 tentativas"
+                exit 1
+              fi
+              "$SDKM" --update || true
+              sleep $((attempt*10))
+            done
+          done
+
+          echo ">> Pacotes instalados:"
+          "$SDKM" --list_installed || true
+
+      # 4) Garantir sdk.dir para o Gradle
       - name: Confirm sdk.dir for Gradle
         shell: bash
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      - name: Install Gradle 8.7 (bootstrap)
+      # 5) Instala Gradle 8.7 e disponibiliza no PATH (usado só para gerar o wrapper)
+      - name: Install Gradle 8.7
         shell: bash
         run: |
+          set -e
           curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o gradle.zip
           unzip -q gradle.zip -d "$HOME/gradle"
           echo "$HOME/gradle/gradle-8.7/bin" >> "$GITHUB_PATH"
           gradle -v
 
+      # 6) Gera projeto Android (WebView)
       - name: Generate Android project (WebView wrapper)
         shell: bash
         run: |
@@ -62,10 +97,12 @@ jobs:
           mkdir -p app/src/main/res/values/themes
 
           cat > settings.gradle.kts <<'EOF'
-          pluginManagement { repositories { gradlePluginPortal(); google(); mavenCentral() } }
+          pluginManagement {
+              repositories { gradlePluginPortal(); google(); mavenCentral() }
+          }
           dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-            repositories { google(); mavenCentral() }
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
           }
           rootProject.name = "BMMOB"
           include(":app")
@@ -73,8 +110,8 @@ jobs:
 
           cat > build.gradle.kts <<'EOF'
           plugins {
-            id("com.android.application") version "8.5.2" apply false
-            id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
           }
           EOF
 
@@ -86,39 +123,39 @@ jobs:
 
           cat > app/build.gradle.kts <<'EOF'
           plugins {
-            id("com.android.application")
-            id("org.jetbrains.kotlin.android")
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
           }
           android {
-            namespace = "com.bmmob.app"
-            compileSdk = 34
-            defaultConfig {
-              applicationId = "com.bmmob.app"
-              minSdk = 24
-              targetSdk = 34
-              versionCode = 1
-              versionName = "1.0"
-              resValue("string", "app_name", "BMMOB Treinamento")
-            }
-            buildTypes {
-              release {
-                isMinifyEnabled = true
-                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+              namespace = "com.bmmob.app"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.bmmob.app"
+                  minSdk = 24
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+                  resValue("string", "app_name", "BMMOB Treinamento")
               }
-              debug { isMinifyEnabled = false }
-            }
-            compileOptions {
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-            }
-            kotlinOptions { jvmTarget = "17" }
+              buildTypes {
+                  release {
+                      isMinifyEnabled = true
+                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                  }
+                  debug { isMinifyEnabled = false }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
           }
           dependencies {
-            implementation("androidx.core:core-ktx:1.13.1")
-            implementation("androidx.appcompat:appcompat:1.7.0")
-            implementation("com.google.android.material:material:1.12.0")
-            implementation("androidx.activity:activity-ktx:1.9.2")
-            implementation("androidx.webkit:webkit:1.11.0")
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("com.google.android.material:material:1.12.0")
+              implementation("androidx.activity:activity-ktx:1.9.2")
+              implementation("androidx.webkit:webkit:1.11.0")
           }
           EOF
 
@@ -130,40 +167,40 @@ jobs:
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-            <uses-permission android:name="android.permission.INTERNET" />
-            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-            <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-            <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-            <application
-              android:allowBackup="true"
-              android:label="@string/app_name"
-              android:icon="@mipmap/ic_launcher"
-              android:roundIcon="@mipmap/ic_launcher_round"
-              android:supportsRtl="true"
-              android:theme="@style/Theme.Material3.DayNight.NoActionBar">
-              <activity
-                android:name=".MainActivity"
-                android:exported="true"
-                android:launchMode="singleTop"
-                android:configChanges="orientation|screenSize|keyboardHidden|keyboard|uiMode"
-                android:screenOrientation="portrait">
-                <intent-filter>
-                  <action android:name="android.intent.action.MAIN"/>
-                  <category android:name="android.intent.category.LAUNCHER"/>
-                </intent-filter>
-              </activity>
-            </application>
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+              <application
+                  android:allowBackup="true"
+                  android:label="@string/app_name"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:configChanges="orientation|screenSize|keyboardHidden|keyboard|uiMode"
+                      android:screenOrientation="portrait">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
           </manifest>
           EOF
 
           cat > app/src/main/res/values/strings.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
-            <string name="app_name">BMMOB Treinamento</string>
-            <string name="web_url">https://rodrigueswcr.github.io/BMMOB-Treinamento/</string>
-            <string name="permission_location_rationale">
-              O app precisa de acesso à localização para habilitar recursos de geolocalização no site.
-            </string>
+              <string name="app_name">BMMOB Treinamento</string>
+              <string name="web_url">https://rodrigueswcr.github.io/BMMOB-Treinamento/</string>
+              <string name="permission_location_rationale">
+                  O app precisa de acesso à localização para habilitar recursos de geolocalização no site.
+              </string>
           </resources>
           EOF
 
@@ -172,17 +209,17 @@ jobs:
           <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
               android:layout_width="match_parent"
               android:layout_height="match_parent">
-            <WebView
-              android:id="@+id/webview"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent" />
+              <WebView
+                  android:id="@+id/webview"
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent" />
           </FrameLayout>
           EOF
 
           cat > app/src/main/res/values/themes/themes.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
-            <style name="Theme.Material3.DayNight.NoActionBar" parent="Theme.Material3.DayNight.NoActionBar"/>
+              <style name="Theme.Material3.DayNight.NoActionBar" parent="Theme.Material3.DayNight.NoActionBar"/>
           </resources>
           EOF
 
@@ -197,105 +234,118 @@ jobs:
           import android.net.Uri
           import android.os.Build
           import android.os.Bundle
-          import android.webkit.*
+          import android.webkit.CookieManager
+          import android.webkit.GeolocationPermissions
+          import android.webkit.ValueCallback
+          import android.webkit.WebChromeClient
+          import android.webkit.WebResourceRequest
+          import android.webkit.WebSettings
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
           import androidx.activity.ComponentActivity
           import androidx.activity.result.contract.ActivityResultContracts
           import androidx.core.content.ContextCompat
 
           class MainActivity : ComponentActivity() {
 
-            private lateinit var webView: WebView
-            private var filePathCallback: ValueCallback<Array<Uri>>? = null
+              private lateinit var webView: WebView
+              private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-            private val fileChooserLauncher = registerForActivityResult(
-              ActivityResultContracts.StartActivityForResult()
-            ) { result ->
-              val dataIntent = result.data
-              val resultUris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, dataIntent)
-              filePathCallback?.onReceiveValue(resultUris)
-              filePathCallback = null
-            }
-
-            private val requestLocationPermission =
-              registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ -> }
-
-            @SuppressLint("SetJavaScriptEnabled")
-            override fun onCreate(savedInstanceState: Bundle?) {
-              super.onCreate(savedInstanceState)
-              setContentView(R.layout.activity_main)
-
-              webView = findViewById(R.id.webview)
-
-              val settings = webView.settings
-              settings.javaScriptEnabled = true
-              settings.domStorageEnabled = true
-              settings.databaseEnabled = true
-              settings.cacheMode = WebSettings.LOAD_DEFAULT
-              settings.allowFileAccess = false
-              settings.allowContentAccess = true
-              settings.mediaPlaybackRequiresUserGesture = true
-              settings.userAgentString = settings.userAgentString + " BMMOB-WebView"
-
-              CookieManager.getInstance().setAcceptCookie(true)
-              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+              private val fileChooserLauncher = registerForActivityResult(
+                  ActivityResultContracts.StartActivityForResult()
+              ) { result ->
+                  val dataIntent = result.data
+                  val resultUris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, dataIntent)
+                  filePathCallback?.onReceiveValue(resultUris)
+                  filePathCallback = null
               }
 
-              webView.webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                  val url = request.url.toString()
-                  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                    try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: ActivityNotFoundException) {}
-                    return true
+              private val requestLocationPermission =
+                  registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ -> }
+
+              @SuppressLint("SetJavaScriptEnabled")
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  webView = findViewById(R.id.webview)
+
+                  val settings = webView.settings
+                  settings.javaScriptEnabled = true
+                  settings.domStorageEnabled = true
+                  settings.databaseEnabled = true
+                  settings.cacheMode = WebSettings.LOAD_DEFAULT
+                  settings.allowFileAccess = false
+                  settings.allowContentAccess = true
+                  settings.mediaPlaybackRequiresUserGesture = true
+                  settings.userAgentString = settings.userAgentString + " BMMOB-WebView"
+
+                  CookieManager.getInstance().setAcceptCookie(true)
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                      CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
                   }
-                  return false
-                }
+
+                  webView.webViewClient = object : WebViewClient() {
+                      override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                          val url = request.url.toString()
+                          if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                              try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                              catch (_: ActivityNotFoundException) {}
+                              return true
+                          }
+                          return false
+                      }
+                  }
+
+                  webView.webChromeClient = object : WebChromeClient() {
+                      override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
+                          val fine = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION)
+                          val coarse = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION)
+                          if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
+                              requestLocationPermission.launch(arrayOf(
+                                  Manifest.permission.ACCESS_FINE_LOCATION,
+                                  Manifest.permission.ACCESS_COARSE_LOCATION
+                              ))
+                          }
+                          callback?.invoke(origin, true, false)
+                      }
+
+                      // Trata Intent nula no file chooser (evita erro de tipo)
+                      override fun onShowFileChooser(
+                          webView: WebView?,
+                          filePathCallback: ValueCallback<Array<Uri>>?,
+                          fileChooserParams: FileChooserParams?
+                      ): Boolean {
+                          this@MainActivity.filePathCallback = filePathCallback
+                          return try {
+                              fileChooserParams?.createIntent()?.let { intent ->
+                                  fileChooserLauncher.launch(intent)
+                                  true
+                              } ?: run {
+                                  this@MainActivity.filePathCallback = null
+                                  false
+                              }
+                          } catch (e: Exception) {
+                              this@MainActivity.filePathCallback = null
+                              false
+                          }
+                      }
+                  }
+
+                  webView.loadUrl(getString(R.string.web_url))
               }
 
-              webView.webChromeClient = object : WebChromeClient() {
-                override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
-                  val fine = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION)
-                  val coarse = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION)
-                  if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
-                    requestLocationPermission.launch(arrayOf(
-                      Manifest.permission.ACCESS_FINE_LOCATION,
-                      Manifest.permission.ACCESS_COARSE_LOCATION
-                    ))
+              override fun onBackPressed() {
+                  if (this::webView.isInitialized && webView.canGoBack()) {
+                      webView.goBack()
+                  } else {
+                      super.onBackPressed()
                   }
-                  callback?.invoke(origin, true, false)
-                }
-
-                override fun onShowFileChooser(
-                  webView: WebView?,
-                  filePathCallback: ValueCallback<Array<Uri>>?,
-                  fileChooserParams: FileChooserParams?
-                ): Boolean {
-                  this@MainActivity.filePathCallback = filePathCallback
-                  return try {
-                    fileChooserParams?.createIntent()?.let { intent ->
-                      fileChooserLauncher.launch(intent)
-                      true
-                    } ?: run {
-                      this@MainActivity.filePathCallback = null
-                      false
-                    }
-                  } catch (e: Exception) {
-                    this@MainActivity.filePathCallback = null
-                    false
-                  }
-                }
               }
-
-              webView.loadUrl(getString(R.string.web_url))
-            }
-
-            override fun onBackPressed() {
-              if (this::webView.isInitialized && webView.canGoBack()) webView.goBack()
-              else super.onBackPressed()
-            }
           }
           EOF
 
+      # 7) Ícone adaptativo (opcional)
       - name: Add app icon if provided
         shell: bash
         run: |
@@ -309,8 +359,8 @@ jobs:
               > app/src/main/res/values/ic_launcher_background.xml
             printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' \
               '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">' \
-              '  <background android:drawable="@color/ic_launcher_background"/>' \
-              '  <foreground android:drawable="@drawable/ic_launcher_foreground"/>' \
+              '    <background android:drawable="@color/ic_launcher_background"/>' \
+              '    <foreground android:drawable="@drawable/ic_launcher_foreground"/>' \
               '</adaptive-icon>' \
               > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
             cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
@@ -318,19 +368,19 @@ jobs:
             echo "Sem app_icon.png — usando ícone padrão do Android"
           fi
 
+      # 8) Wrapper do Gradle 8.7 p/ o projeto
       - name: Generate Gradle wrapper
         shell: bash
         run: |
           gradle wrapper --gradle-version 8.7
           chmod +x gradlew
 
-      - name: Setup Gradle (cache)
-        uses: gradle/actions/setup-gradle@v3
-
+      # 9) Build Debug APK
       - name: Build Debug APK
         shell: bash
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
+      # 10) Renomeia e publica artefato
       - name: Rename APK
         shell: bash
         run: mv app/build/outputs/apk/debug/app-debug.apk "BMMOB-Treinamento-debug.apk"
