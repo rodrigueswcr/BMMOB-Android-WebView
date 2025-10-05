@@ -21,13 +21,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      # ✅ Instala o SDK + aceita licenças + baixa os pacotes necessários
-      # (evita completamente o problema do "Broken pipe")
+      # ✅ Usa a cmdline-tools já instalada no runner (12.0 => build 11076708)
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: 16.0
+          cmdline-tools-version: 11076708
           packages: |
             platform-tools
             platforms;android-34
