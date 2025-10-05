@@ -21,15 +21,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          # (sem cache aqui — evita procurar arquivos Gradle antes de existirem)
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # Usa cmdline-tools 12.0 já presente no runner
+          # 12.0 (11076708) já existe no runner
           cmdline-tools-version: 11076708
-          # IMPORTANTE: uma única string, separada por vírgula
-          packages: platform-tools,"platforms;android-34","build-tools;34.0.0"
+          # ❗ Sem aspas e sem vírgulas — uma linha por pacote
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
 
       # (Opcional, robustez extra) Garante a instalação dos pacotes
       - name: Ensure Android packages installed (fallback)
@@ -37,6 +39,7 @@ jobs:
         run: |
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list_installed || true
 
       - name: Confirm sdk.dir for Gradle
         shell: bash
@@ -50,7 +53,6 @@ jobs:
           echo "$HOME/gradle/gradle-8.7/bin" >> "$GITHUB_PATH"
           gradle -v
 
-      # Gera o projeto Android (WebView)
       - name: Generate Android project (WebView wrapper)
         shell: bash
         run: |
@@ -322,7 +324,6 @@ jobs:
           gradle wrapper --gradle-version 8.7
           chmod +x gradlew
 
-      # Agora os arquivos Gradle e o wrapper existem — ativar cache
       - name: Setup Gradle (cache)
         uses: gradle/actions/setup-gradle@v3
 
