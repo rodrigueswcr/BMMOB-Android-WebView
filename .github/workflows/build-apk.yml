@@ -21,29 +21,36 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          # ⛔️ Nada de cache aqui (evita procurar arquivos Gradle antes da hora)
+          # (sem cache aqui — evita procurar arquivos Gradle antes de existirem)
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # Usa a cmdline-tools 12.0 (build 11076708) já instalada no runner
+          # Usa cmdline-tools 12.0 já presente no runner
           cmdline-tools-version: 11076708
-          packages: |
-            platform-tools
-            platforms;android-34
-            build-tools;34.0.0
+          # IMPORTANTE: uma única string, separada por vírgula
+          packages: platform-tools,"platforms;android-34","build-tools;34.0.0"
+
+      # (Opcional, robustez extra) Garante a instalação dos pacotes
+      - name: Ensure Android packages installed (fallback)
+        shell: bash
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Confirm sdk.dir for Gradle
+        shell: bash
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      - name: Install Gradle 8.7 (CLI to bootstrap wrapper)
+      - name: Install Gradle 8.7 (bootstrap)
+        shell: bash
         run: |
           curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o gradle.zip
           unzip -q gradle.zip -d "$HOME/gradle"
           echo "$HOME/gradle/gradle-8.7/bin" >> "$GITHUB_PATH"
           gradle -v
 
-      # Cria o projeto Android em tempo de execução
+      # Gera o projeto Android (WebView)
       - name: Generate Android project (WebView wrapper)
         shell: bash
         run: |
@@ -310,18 +317,21 @@ jobs:
           fi
 
       - name: Generate Gradle wrapper
+        shell: bash
         run: |
           gradle wrapper --gradle-version 8.7
           chmod +x gradlew
 
-      # ✅ Agora que existem wrapper e arquivos Gradle, ativamos o cache corretamente
+      # Agora os arquivos Gradle e o wrapper existem — ativar cache
       - name: Setup Gradle (cache)
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build Debug APK
+        shell: bash
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
       - name: Rename APK
+        shell: bash
         run: mv app/build/outputs/apk/debug/app-debug.apk "BMMOB-Treinamento-debug.apk"
 
       - name: Upload APK (artifact)
